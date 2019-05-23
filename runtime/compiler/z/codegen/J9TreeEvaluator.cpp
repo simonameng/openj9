@@ -9903,7 +9903,9 @@ J9::Z::TreeEvaluator::VMarrayCheckEvaluator(TR::Node *node, TR::CodeGenerator *c
 static bool
 inlineMathSQRT(TR::Node * node, TR::CodeGenerator * cg)
    {
-   TR::Node * firstChild = node->getFirstChild();
+   //TR::Node * firstChild = node->getFirstChild();
+   TR::Node *operand = NULL;
+   TR::Node *firstChild = NULL;
    TR::Register * targetRegister = NULL;
    static char * nosupportSQRT = feGetEnv("TR_NOINLINESQRT");
 
@@ -9912,13 +9914,25 @@ inlineMathSQRT(TR::Node * node, TR::CodeGenerator * cg)
       return false;
       }
 
+   // Sometimes will have two children, the operand is the second child.
+   if (node->getNumChildren() == 1) 
+      {
+      operand = node->getFirstChild();
+      }
+   else
+      {
+      operand = node->getSecondChild();
+      firstChild = node->firstChild();
+      cg->evaluate(firstChild);
+      }
+   
 
    // Calculate it for ourselves
-   if (firstChild->getOpCode().isLoadConst())
+   if (operand->getOpCode().isLoadConst())
       {
       union { double valD; int64_t valI; } result;
       targetRegister = cg->allocateRegister(TR_FPR);
-      result.valD = sqrt(firstChild->getDouble());
+      result.valD = sqrt(operand->getDouble());
       TR::S390ConstantDataSnippet * cds = cg->findOrCreate8ByteConstant(node, result.valI);
       generateRXInstruction(cg, TR::InstOpCode::LD, node, targetRegister, generateS390MemoryReference(cds, cg, 0, node));
       }
@@ -9927,16 +9941,16 @@ inlineMathSQRT(TR::Node * node, TR::CodeGenerator * cg)
       TR::Register * opRegister = NULL;
 
       //See whether to use SQDB or SQDBR depending on how many times it is referenced
-      if (firstChild->isSingleRefUnevaluated() && firstChild->getOpCodeValue() == TR::dloadi)
+      if (operand->isSingleRefUnevaluated() && operand->getOpCodeValue() == TR::dloadi)
          {
          targetRegister = cg->allocateRegister(TR_FPR);
-         generateRXEInstruction(cg, TR::InstOpCode::SQDB, node, targetRegister, generateS390MemoryReference(firstChild, cg), 0);
+         generateRXEInstruction(cg, TR::InstOpCode::SQDB, node, targetRegister, generateS390MemoryReference(operand, cg), 0);
          }
       else
          {
-         opRegister = cg->evaluate(firstChild);
+         opRegister = cg->evaluate(operand);
 
-         if (cg->canClobberNodesRegister(firstChild))
+         if (cg->canClobberNodesRegister(operand))
             {
             targetRegister = opRegister;
             }
@@ -9949,7 +9963,12 @@ inlineMathSQRT(TR::Node * node, TR::CodeGenerator * cg)
       }
 
    node->setRegister(targetRegister);
-   cg->decReferenceCount(firstChild);
+   cg->decReferenceCount(operand);
+   if (firstChild)
+      {
+         cg->decReferenceCount(firstChild);
+      }
+
    return true;
    }
 
