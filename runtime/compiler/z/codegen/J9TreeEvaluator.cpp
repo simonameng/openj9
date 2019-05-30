@@ -9922,7 +9922,7 @@ inlineMathSQRT(TR::Node * node, TR::CodeGenerator * cg)
    else
       {
       operand = node->getSecondChild();
-      firstChild = node->firstChild();
+      firstChild = node->getFirstChild();
       cg->evaluate(firstChild);
       }
    
