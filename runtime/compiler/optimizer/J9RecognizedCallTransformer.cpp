@@ -109,7 +109,7 @@ void J9::RecognizedCallTransformer::process_java_lang_StrictMath_sqrt(TR::TreeTo
       TR::Node* dumpNode = node->getChild(0);
       TR::Node* valueNode = node->getChild(1);
 
-      anchorNode(dumpNode, treetop);
+      anchorAllChildren(node, treetop);
       prepareToReplaceNode(node);
 
       TR::Node::recreateWithoutProperties(node, TR::dsqrt, 1, valueNode, getSymRefTab()->findOrCreateNewArraySymbolRef(node->getSymbolReference()->getOwningMethodSymbol(comp())));
