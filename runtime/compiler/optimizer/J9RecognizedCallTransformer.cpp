@@ -106,8 +106,8 @@ void J9::RecognizedCallTransformer::process_java_lang_StringUTF16_toBytes(TR::Tr
 
 void J9::RecognizedCallTransformer::process_java_lang_StrictMath_sqrt(TR::TreeTop* treetop, TR::Node* node)
    {
-      TR::Node* dumpNode = node->getChild(0);
-      TR::Node* valueNode = node->getChild(1);
+      // TR::Node* dumpNode = node->getChild(0);
+      TR::Node* valueNode = node->getLastChild();
 
       anchorAllChildren(node, treetop);
       prepareToReplaceNode(node);
@@ -436,10 +436,8 @@ void J9::RecognizedCallTransformer::transform(TR::TreeTop* treetop)
          process_java_lang_StringUTF16_toBytes(treetop, node);
          break;
       case TR::java_lang_StrictMath_sqrt:
-         process_java_lang_StrictMath_sqrt(treetop, node);
-         break;
       case TR::java_lang_Math_sqrt:
-         processIntrinsicFunction(treetop, node, TR::dsqrt);
+         process_java_lang_StrictMath_sqrt(treetop, node);
          break;
       default:
          break;
