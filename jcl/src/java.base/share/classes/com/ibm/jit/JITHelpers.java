@@ -28,6 +28,7 @@ import com.ibm.oti.vm.J9UnmodifiableClass;
 import java.lang.reflect.Field;
 import java.lang.reflect.Array;
 import com.ibm.oti.vm.VM;
+import java.nio.ByteOrder;
 /*[IF Sidecar19-SE]
 import jdk.internal.misc.Unsafe;
 import jdk.internal.reflect.Reflection;
@@ -77,8 +78,6 @@ public final class JITHelpers {
 	private static final long JLCLASS_J9CLASS_OFFSET = javaLangClassJ9ClassOffset();
 	private static final int POINTER_SIZE = VM.ADDRESS_SIZE;
 	private static final boolean IS_32_BIT = (POINTER_SIZE == 4);
-
-	public static final boolean IS_PLATFORM_LITTLE_ENDIAN = isPlatformLittleEndian();
 
 	/*
 	 * The following natives are used by the static initializer. They do not require special treatment by the JIT.
@@ -462,7 +461,7 @@ public final class JITHelpers {
 	public native boolean acmplt(Object lhs, Object rhs);
 
 	private static long storeBits(long dest, int width, long value, int vwidth, int offset) {
-		int offsetToModify = IS_PLATFORM_LITTLE_ENDIAN ? ((offset * vwidth) % width) : ((width - 1) - ((offset * vwidth) % width));
+		int offsetToModify = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) ? ((offset * vwidth) % width) : ((width - 1) - ((offset * vwidth) % width));
 
 		long vmask = (-1 >>> ((8 - vwidth) * 8));
 		long dmask = ~(vmask << (8 * offsetToModify));
@@ -471,7 +470,7 @@ public final class JITHelpers {
 	}
 
 	private static long readBits(long src, int width, int vwidth, int offset) {
-		int offsetToRead = IS_PLATFORM_LITTLE_ENDIAN ? ((offset * vwidth) % width) : ((width - 1) - ((offset * vwidth) % width));
+		int offsetToRead = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) ? ((offset * vwidth) % width) : ((width - 1) - ((offset * vwidth) % width));
 
 		long vmask = (-1 >>> ((8 - vwidth) * 8));
 		long smask = vmask << (8 * offsetToRead);
@@ -523,7 +522,7 @@ public final class JITHelpers {
 		if (clazz == byte[].class) {
 			index = index << 1;
 			byte[] array = (byte[]) obj;
-			if (IS_PLATFORM_LITTLE_ENDIAN) {
+			if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
 				array[index] = (byte) value;
 				array[index + 1] = (byte) (value >>> 8);
 			} else {
@@ -551,7 +550,7 @@ public final class JITHelpers {
 		if (clazz == byte[].class) {
 			index = index << 1;
 			byte[] array = (byte[]) obj;
-			if (IS_PLATFORM_LITTLE_ENDIAN) {
+			if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
 				return (char) ((byteToCharUnsigned(array[index + 1]) << 8) | byteToCharUnsigned(array[index]));
 			} else {
 				return (char) (byteToCharUnsigned(array[index + 1]) | (byteToCharUnsigned(array[index]) << 8));
@@ -995,13 +994,6 @@ public final class JITHelpers {
 		return initStatus;
 	}
 
-
-	/**
-	 * Determines whether the underlying platform's memory model is little-endian.
-	 * 
-	 * @return True if the underlying platform's memory model is little-endian, false otherwise.
-	 */
-	private native static final boolean isPlatformLittleEndian();
 
 	/* Placeholder for JIT GPU optimizations - this method never actually gets run */
 	public final native void GPUHelper();
