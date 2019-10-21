@@ -202,7 +202,8 @@
    java_lang_StringLatin1_indexOf,
 
    java_lang_StringUTF16_getChar,
-   java_lang_StringUTF16_indexOf,
+   java_lang_StringUTF16_indexOf_String,
+   java_lang_StringUTF16_indexOf_int,
    java_lang_StringUTF16_toBytes,
 
    java_lang_StringBuffer_append,

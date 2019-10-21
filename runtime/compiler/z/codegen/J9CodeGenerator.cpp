@@ -4083,6 +4083,7 @@ J9::Z::CodeGenerator::inlineDirectCall(
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfLatin1:
             resultReg = inlineIntrinsicIndexOf(node, cg, true);
             return true;
+         case TR::java_lang_StringUTF16_indexOf_int:
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfUTF16:
             resultReg = inlineIntrinsicIndexOf(node, cg, false);
             return true;
@@ -4090,7 +4091,7 @@ J9::Z::CodeGenerator::inlineDirectCall(
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringLatin1:
                resultReg = inlineVectorizedStringIndexOf(node, cg, false);
                return true;
-         case TR::java_lang_StringUTF16_indexOf:
+         case TR::java_lang_StringUTF16_indexOf_String:
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringUTF16:
                resultReg = inlineVectorizedStringIndexOf(node, cg, true);
                return true;

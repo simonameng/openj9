@@ -3406,7 +3406,7 @@ void TR_ResolvedJ9Method::construct()
       {x(TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringLatin1,             "intrinsicIndexOfStringLatin1", "(Ljava/lang/Object;ILjava/lang/Object;II)I")},
       {x(TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringUTF16,              "intrinsicIndexOfStringUTF16", "(Ljava/lang/Object;ILjava/lang/Object;II)I")},
       {x(TR::com_ibm_jit_JITHelpers_intrinsicIndexOfLatin1,                   "intrinsicIndexOfLatin1", "(Ljava/lang/Object;BII)I")},
-      {x(TR::com_ibm_jit_JITHelpers_intrinsicIndexOfUTF16,                    "intrinsicIndexOfUTF16", "(Ljava/lang/Object;CII)I")},
+      {x(TR::com_ibm_jit_JITHelpers_intrinsicIndexOfUTF16,                    "intrinsicIndexOfUTF16", "(Ljava/lang/Object;III)I")}, 
 #ifdef TR_TARGET_32BIT
       {x(TR::com_ibm_jit_JITHelpers_getJ9ClassFromObject32,                   "getJ9ClassFromObject32", "(Ljava/lang/Object;)I")},
       {x(TR::com_ibm_jit_JITHelpers_getJ9ClassFromClass32,                    "getJ9ClassFromClass32", "(Ljava/lang/Class;)I")},
@@ -3507,7 +3507,8 @@ void TR_ResolvedJ9Method::construct()
    static X StringUTF16Methods[] =
       {
       { x(TR::java_lang_StringUTF16_getChar,                                  "getChar",        "([BI)C")},
-      { x(TR::java_lang_StringUTF16_indexOf,                                  "indexOf",        "([BI[BII)I")},
+      { x(TR::java_lang_StringUTF16_indexOf_String,                           "indexOfUnsafe",  "([BI[BII)I")},
+      { x(TR::java_lang_StringUTF16_indexOf_int,                              "indexOfCharUnsafe","([BIII)I")},
       { x(TR::java_lang_StringUTF16_toBytes,                                  "toBytes",        "([CII)[B")},
       { TR::unknownMethod }
       };

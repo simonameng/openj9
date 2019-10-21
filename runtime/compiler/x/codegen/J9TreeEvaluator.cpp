@@ -11604,6 +11604,7 @@ J9::X86::TreeEvaluator::directCallEvaluator(TR::Node *node, TR::CodeGenerator *c
             break;
          else
             return inlineIntrinsicIndexOf(node, cg, true);
+      case TR::java_lang_StringUTF16_indexOf_int:
       case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfUTF16:
          if (!cg->getSupportsInlineStringIndexOf())
             break;

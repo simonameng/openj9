@@ -2881,7 +2881,8 @@ bool TR_J9VMBase::supressInliningRecognizedInitialCallee(TR_CallSite* callsite, 
                }
             break;
          case TR::java_lang_StringLatin1_indexOf:
-         case TR::java_lang_StringUTF16_indexOf:
+         case TR::java_lang_StringUTF16_indexOf_String:
+         case TR::java_lang_StringUTF16_indexOf_int:
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringLatin1:
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfStringUTF16:
          case TR::com_ibm_jit_JITHelpers_intrinsicIndexOfLatin1:
