@@ -1946,7 +1946,7 @@ public final class String implements Serializable, Comparable<String>, CharSeque
 						return helpers.intrinsicIndexOfLatin1(array, (byte)c, start, len);
 					}
 				} else {
-					return helpers.intrinsicIndexOfUTF16(array, (char)c, start, len);
+					return helpers.intrinsicIndexOfUTF16(array, c, start, len);
 				}
 			} else if (c <= Character.MAX_CODE_POINT) {
 				for (int i = start; i < len; ++i) {
@@ -5920,7 +5920,7 @@ public final class String implements Serializable, Comparable<String>, CharSeque
 						return helpers.intrinsicIndexOfLatin1(array, (byte)c, start, len);
 					}
 				} else {
-					return helpers.intrinsicIndexOfUTF16(array, (char)c, start, len);
+					return helpers.intrinsicIndexOfUTF16(array, c, start, len);
 				}
 			} else if (c <= Character.MAX_CODE_POINT) {
 				for (int i = start; i < len; ++i) {

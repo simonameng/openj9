@@ -638,7 +638,7 @@ public final class JITHelpers {
 		char firstChar = getCharFromArrayByIndex(s2Value, 0);
 
 		while (true) {
-			int i = intrinsicIndexOfUTF16(s1Value, firstChar, start, s1len);
+			int i = intrinsicIndexOfUTF16(s1Value, (int)firstChar, start, s1len);
 			
 			// Handles subCount > count || start >= count
 			if (i == -1 || s2len + i > s1len) {
@@ -702,7 +702,7 @@ public final class JITHelpers {
 	 * @return       the index (in number of characters) of \p ch within the source array, or -1 if \p ch is not found
 	 *               within the source array.
 	 */
-	public int intrinsicIndexOfUTF16(Object array, char ch, int offset, int length) {
+	public int intrinsicIndexOfUTF16(Object array, int ch, int offset, int length) {
 		for (int i = offset; i < length; i++) {
 			if (getCharFromArrayByIndex(array, i) == ch) {
 				return i;
