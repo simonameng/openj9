@@ -548,5 +548,13 @@
       <class name="jit.test.vich.ReadTest" />
     </classes>
   </test>
+
+  <!-- jit.test.recognizedMethod tests start here -->
+  <test name="RecognizedSqrtTest">
+    <classes>
+      <class name="jit.test.recognizedMethod.TestJavaLangStrictMath" />
+      <class name="jit.test.recognizedMethod.TestJavaLangMath" />
+    </classes>
+  </test>
 </suite>
 <!-- Suite -->
