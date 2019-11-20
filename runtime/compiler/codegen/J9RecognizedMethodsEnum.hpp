@@ -239,6 +239,8 @@
 
    java_nio_HeapByteBuffer_put,
 
+   java_nio_ByteOrder_nativeOrder,
+
    // routines from the memory Fence library.  See JIT design 1598
    java_util_concurrent_atomic_Fences_postLoadFence,
    java_util_concurrent_atomic_Fences_preStoreFence,

@@ -3559,6 +3559,12 @@ void TR_ResolvedJ9Method::construct()
       {  TR::unknownMethod}
       };
 
+   static X ByteOrderMethods[] =
+       {
+       {x(TR::java_nio_ByteOrder_nativeOrder,          "nativeOrder",          "()Ljava/nio/ByteOrder;")},
+       {  TR::unknownMethod}
+       };
+
    static X CharacterMethods[] =
       {
       {  TR::java_lang_Character_init,          6,    "<init>", (int16_t)-1,    "*"},
@@ -4218,6 +4224,7 @@ void TR_ResolvedJ9Method::construct()
    static Y class18[] =
       {
       { "com/ibm/gpu/Kernel", GPUMethods },
+      { "java/nio/ByteOrder", ByteOrderMethods},
       { 0 }
       };
 
