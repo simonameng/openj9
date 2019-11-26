@@ -4062,6 +4062,21 @@ break
       return NULL;
       }
 
+   if (symbol->getRecognizedMethod() == TR::java_nio_ByteOrder_nativeOrder)
+      {
+      TR::Symbol* sym = TR::Symbol::createShadow(comp()->trHeapMemory(), TR::Address);
+      TR_OpaqueClassBlock * classBlock = fej9()->getClassFromSignature("java/nio/ByteOrder", 18, comp()->getCurrentMethod());
+      if (TR::Compiler->target.cpu.isLittleEndian())
+         {
+         loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"LITTLE_ENDIAN", 13, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+         }
+      else
+         {
+         loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"BIG_ENDIAN", 10, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+         }
+      return NULL;
+      }
+
    if (!isStatic && _classInfo && !symRef->isUnresolved())
       {
       if (!_classInfo->getFieldInfo())
