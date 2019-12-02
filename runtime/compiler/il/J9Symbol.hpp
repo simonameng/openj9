@@ -170,6 +170,8 @@ public:
       Java_lang_Boolean_value,
       Java_lang_Class_enumVars,
       Java_lang_ClassEnumVars_cachedEnumConstants,
+      Java_nio_ByteOrder_BIG_ENDIAN,
+      Java_nio_ByteOrder_LITTLE_ENDIAN,
       assertionsDisabled,
       NumRecognizedFields
       };

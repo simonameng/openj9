@@ -4064,15 +4064,30 @@ break
 
    if (symbol->getRecognizedMethod() == TR::java_nio_ByteOrder_nativeOrder)
       {
-      TR::Symbol* sym = TR::Symbol::createShadow(comp()->trHeapMemory(), TR::Address);
+      // TR::Symbol* sym = TR::Symbol::createShadow(comp()->trHeapMemory(), TR::Address);
       TR_OpaqueClassBlock * classBlock = fej9()->getClassFromSignature("java/nio/ByteOrder", 18, comp()->getCurrentMethod());
+      // if (TR::Compiler->target.cpu.isLittleEndian())
+      //    {
+         // loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"LITTLE_ENDIAN", 13, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+      //    }
+      // else
+      //    {
+         // loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"BIG_ENDIAN", 10, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+      //    }
+      // return NULL;
+      TR::SymbolReference *endianSymRef;
+      uintptrj_t endianOffset;
       if (TR::Compiler->target.cpu.isLittleEndian())
          {
-         loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"LITTLE_ENDIAN", 13, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+         endianOffset = reinterpret_cast<uintptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"LITTLE_ENDIAN", 13, (unsigned char *)"Ljava/nio/ByteOrder;", 20));
+         endianSymRef = comp()->getSymRefTab()->findOrFabricateShadowSymbol(_methodSymbol, TR::Symbol::Java_nio_ByteOrder_LITTLE_ENDIAN, TR::Address, endianOffset, false, false, true, "java/nio/ByteOrder.LITTLE_ENDIAN Ljava/nio/ByteOrder;");
+         loadSymbol(TR::aload, endianSymRef);
          }
       else
          {
-         loadSymbol(TR::aload, comp()->getSymRefTab()->createSymbolReference(sym, reinterpret_cast<intptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"BIG_ENDIAN", 10, (unsigned char *)"Ljava/nio/ByteOrder;", 20))));
+         endianOffset = reinterpret_cast<uintptrj_t>(fej9()->getStaticFieldAddress(classBlock, (unsigned char *)"BIG_ENDIAN", 10, (unsigned char *)"Ljava/nio/ByteOrder;", 20));
+         endianSymRef = comp()->getSymRefTab()->findOrFabricateShadowSymbol(_methodSymbol, TR::Symbol::Java_nio_ByteOrder_BIG_ENDIAN, TR::Address, endianOffset, false, false, true, "java/nio/ByteOrder.BIG_ENDIAN Ljava/nio/ByteOrder;");
+         loadSymbol(TR::aload, endianSymRef);
          }
       return NULL;
       }

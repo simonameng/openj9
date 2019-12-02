@@ -161,6 +161,8 @@
        {r(TR::Symbol::Java_lang_Boolean_value,                        "java/lang/Boolean", "value", "Z")},
        {r(TR::Symbol::Java_lang_Class_enumVars,                       "java/lang/Class", "enumVars", "Ljava/lang/Class$EnumVars;")},
        {r(TR::Symbol::Java_lang_ClassEnumVars_cachedEnumConstants,    "java/lang/Class$EnumVars", "cachedEnumConstants", "[Ljava/lang/Object;")},
+       {r(TR::Symbol::Java_nio_ByteOrder_BIG_ENDIAN,                  "java/nio/ByteOrder", "BIG_ENDIAN", "Ljava/nio/ByteOrder;")},
+       {r(TR::Symbol::Java_nio_ByteOrder_LITTLE_ENDIAN,               "java/nio/ByteOrder", "LITTLE_ENDIAN", "Ljava/nio/ByteOrder;")},
        {TR::Symbol::UnknownField}
       };
 
