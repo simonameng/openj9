@@ -76,7 +76,10 @@ J9::SymbolReferenceTable::SymbolReferenceTable(size_t sizeHint, TR::Compilation 
      _unsafeJavaStaticVolatileSymRefs(NULL),
      _currentThreadDebugEventDataSymbol(0),
      _currentThreadDebugEventDataSymbolRefs(c->trMemory()),
-     _constantPoolAddressSymbolRefs(c->trMemory())
+     _constantPoolAddressSymbolRefs(c->trMemory()),
+     _resolvedFieldStatics(
+         std::less<ResolvedFieldStaticKey>(),
+         getTypedAllocator<ResolvedFieldStaticsEntry>(c->allocator()))
    {
    for (uint32_t i = 0; i < _numImmutableClasses; i++)
       _immutableSymRefNumbers[i] = new (trHeapMemory()) TR_BitVector(sizeHint, c->trMemory(), heapAlloc, growable);
@@ -1377,9 +1380,184 @@ J9::SymbolReferenceTable::addParameters(TR::ResolvedMethodSymbol * methodSymbol)
 
 
 TR::SymbolReference *
-J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex, bool isStore)
+J9::SymbolReferenceTable::findResolvedFieldStatic(ResolvedFieldStaticKey key, bool isVolatile, bool isPrivate, bool isFinal)
+   {
+   const auto entry = _resolvedFieldStatics.find(key);
+   if (entry == _resolvedFieldStatics.end())
+      return NULL;
+
+   TR::SymbolReference *symRef = entry->second;
+   int32_t refNum = symRef->getReferenceNumber();
+   TR::StaticSymbol *sym = symRef->getSymbol()->castToStaticSymbol();
+
+   // It's possible that isVolatile could vary in the future (for accesses
+   // with different memory ordering effects). If so, it should be made part
+   // of the key, and the two symRefs differing only in isVolatile should be
+   // considered to possibly alias.
+   TR_ASSERT_FATAL(sym->isVolatile() == isVolatile, "isVolatile mismatch #%d\n", refNum);
+   TR_ASSERT_FATAL(sym->isPrivate() == isPrivate, "isPrivate mismatch #%d\n", refNum);
+   TR_ASSERT_FATAL(sym->isFinal() == isFinal, "isFinal mismatch #%d\n", refNum);
+
+   return symRef;
+   }
+
+
+TR::StaticSymbol *
+J9::SymbolReferenceTable::createStaticSymbol(TR::DataType type, bool isVolatile, bool isPrivate, bool isFinal, const char *name, TR::Symbol::RecognizedField recognizedField)
+   {
+   TR::StaticSymbol *sym = NULL;
+   if (recognizedField != TR::Symbol::UnknownField)
+      sym = TR::StaticSymbol::createRecognized(trHeapMemory(), type, recognizedField);
+   else
+      sym = TR::StaticSymbol::create(trHeapMemory(), type);
+
+   if (name != NULL)
+      OMR::StaticSymbol::createNamed(sym, name);
+
+   if (isVolatile)
+      sym->setVolatile();
+   if (isPrivate)
+      sym->setPrivate();
+   if (isFinal)
+      sym->setFinal();
+
+   return sym;
+   }
+
+
+TR::KnownObjectTable::Index
+J9::SymbolReferenceTable::findKnownObjectIndex(int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex)
+   {
+   TR::KnownObjectTable *knot = comp()->getOrCreateKnownObjectTable();
+   if (knot
+       && isResolved
+       && isFinal
+       && type == TR::Address
+       && !comp()->compileRelocatableCode())
+      {
+      TR::VMAccessCriticalSection getObjectReferenceLocation(comp());
+      if (*((uintptrj_t*)dataAddress) != 0)
+         {
+         TR_J9VMBase *fej9 = comp()->fej9();
+         TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
+         if (declaringClass && fej9->isClassInitialized(declaringClass))
+            {
+            static const char *foldVarHandle = feGetEnv("TR_FoldVarHandleWithoutFear");
+            bool createKnownObject = false;
+
+            if (J9::TransformUtil::foldFinalFieldsIn(declaringClass, className, classNameLen, true, comp()))
+               createKnownObject = true;
+            else if (foldVarHandle 
+                     && (classNameLen != 16 || strncmp(className, "java/lang/System", 16)))
+               {
+               TR_OpaqueClassBlock *varHandleClass =  fej9->getSystemClassFromClassName("java/lang/invoke/VarHandle", 26);
+               TR_OpaqueClassBlock *objectClass = TR::Compiler->cls.objectClass(comp(), *((uintptrj_t*)dataAddress));
+
+               if (varHandleClass != NULL
+                  && objectClass != NULL
+                  && fej9->isInstanceOf(objectClass, varHandleClass, true, true))
+                  createKnownObject = true;
+               }
+
+            if (createKnownObject)
+               return knot->getIndexAt((uintptrj_t*)dataAddress);
+            }
+         }
+      }
+      return TR::KnownObjectTable::UNKNOWN;
+   }
+
+void
+J9::SymbolReferenceTable::initStaticSymbol(TR_ResolvedMethod *owningMethod, TR_OpaqueClassBlock *containingClass, TR::SymbolReference *symRef, TR::StaticSymbol * sym, TR::DataType type, void *dataAddress, bool isResolved, bool isUnresolvedInCP, int32_t cpIndex)
+   {
+   if (isResolved)
+      {
+      sym->setStaticAddress(dataAddress);
+      if (type != TR::Address && _compilation->cg()->getAccessStaticsIndirectly() && !_compilation->compileRelocatableCode())
+         {
+         TR_J9VMBase *fej9 = (TR_J9VMBase *)(fe());
+         if (owningMethod && !containingClass)
+            {
+            TR_OpaqueClassBlock * feClass = owningMethod->classOfStatic(cpIndex, true);
+            symRef->setOffset((char *)dataAddress - (char *)fej9->addressOfFirstClassStatic(feClass));
+            }
+         else if (!owningMethod && containingClass)
+            symRef->setOffset((char *)dataAddress - (char *)fej9->addressOfFirstClassStatic(containingClass));
+         }
+      }
+   else
+      {
+      symRef->setUnresolved();
+      symRef->setCanGCandReturn();
+      symRef->setCanGCandExcept();
+      }
+
+   symRef->setHasBeenAccessedAtRuntime(isUnresolvedInCP? TR_no : TR_maybe);
+
+   if (type == TR::Address)
+      aliasBuilder.addressStaticSymRefs().set(symRef->getReferenceNumber());
+   else if (type == TR::Int32)
+      aliasBuilder.intStaticSymRefs().set(symRef->getReferenceNumber());
+   else
+      aliasBuilder.nonIntPrimitiveStaticSymRefs().set(symRef->getReferenceNumber());
+   }
+
+
+TR::SymbolReference *
+J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, char *name)
    {
    TR_ResolvedMethod * owningMethod = owningMethodSymbol->getResolvedMethod();
+   TR::SymbolReference * symRef = findStaticSymbol(owningMethod, -1, type);
+   TR::StaticSymbol * sym = NULL;
+   if (symRef)
+      return symRef;
+   else
+      sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, name, recognizedField);
+
+   int32_t classNameLen = 0;
+   TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
+   char *className = comp()->fej9()->getClassNameChars(declaringClass, clazzNameLen);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, true, -1);
+   symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1, 0, knownObjectIndex);
+   initStaticSymbol(owningMethod, NULL, symRef, sym, type, dataAddress, true, false, -1);
+   return symRef;
+   }
+
+
+TR::SymbolReference *
+J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR_OpaqueClassBlock *containingClass, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature)
+   {
+   ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+   TR::SymbolReference *symRef = findResolvedFieldStatic(key, isVolatile, isPrivate, isFinal);
+   if (symRef)
+      return symRef;
+
+   int32_t classNameLen = 0;
+   const char *className = TR::Compiler->cls.classNameChars(comp(), containingClass, classNameLen);
+   int qualifiedFieldNameSize = classNameLen + 1 + strlen(name) + 1 + strlen(signature) + 1;
+   char *qualifiedFieldName = (char*)trHeapMemory().allocate(qualifiedFieldNameSize);
+   snprintf(
+         qualifiedFieldName,
+         qualifiedFieldNameSize,
+         "%.*s.%s %s",
+         classNameLen,
+         className,
+         name,
+         signature);
+   TR::StaticSymbol *sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, qualifiedFieldName, recognizedField);
+
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, true, -1);
+   symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, mcount_t::valueOf(0), -1, 0, knownObjectIndex);
+   initStaticSymbol(NULL, containingClass, symRef, sym, type, dataAddress, true, false, -1);
+   _resolvedFieldStatics.insert(std::make_pair(key, symRef));
+   return symRef;
+   }
+
+
+TR::SymbolReference *
+J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex, bool isStore)
+   {
+   TR_ResolvedMethod * owningMethod = static_cast<TR_ResolvedJ9Method*>(owningMethodSymbol->getResolvedMethod());
    void * dataAddress;
    TR::DataType type = TR::NoType;
    bool isVolatile, isFinal, isPrivate, isUnresolvedInCP;
@@ -1389,6 +1567,26 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
       resolved = false;
 
    bool sharesSymbol = false;
+
+   TR_OpaqueClassBlock *containingClass = NULL;
+   if (resolved)
+      {
+      bool isStatic = false;
+      containingClass =
+         owningMethod->definingClassFromCPFieldRef(comp(), cpIndex, isStatic);
+
+      TR_ASSERT_FATAL(
+         containingClass != NULL,
+         "failed to get defining class of field ref cpIndex=%d in owning method J9Method=%p",
+         cpIndex,
+         owningMethod->getNonPersistentIdentifier());
+
+      ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+      TR::SymbolReference *symRef = findResolvedFieldStatic(key, isVolatile, isPrivate, isFinal);
+
+      if (symRef != NULL)
+         return symRef;
+      }
 
    TR::StaticSymbol * sym = 0;
    TR::SymbolReference * symRef = findStaticSymbol(owningMethod, cpIndex, type);
@@ -1410,17 +1608,7 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    else
       {
       TR::Symbol::RecognizedField recognizedField = TR::Symbol::searchRecognizedField(comp(), owningMethod, cpIndex, true);
-      if (recognizedField != TR::Symbol::UnknownField)
-         sym = TR::StaticSymbol::createRecognized(trHeapMemory(), type, recognizedField);
-      else
-         sym = TR::StaticSymbol::create(trHeapMemory(), type);
-
-      if (isVolatile)
-         sym->setVolatile();
-      if (isFinal)
-         sym->setFinal();
-      if (isPrivate)
-         sym->setPrivate();
+      sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, NULL, recognizedField);
       }
 
    int32_t unresolvedIndex = resolved ? 0 : _numUnresolvedSymbols++;
@@ -1428,51 +1616,11 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (sharesSymbol)
       symRef->setReallySharesSymbol();
 
-   TR::KnownObjectTable::Index knownObjectIndex = TR::KnownObjectTable::UNKNOWN;
-   TR::KnownObjectTable *knot = comp()->getOrCreateKnownObjectTable();
-   if (knot
-       && resolved
-       && isFinal
-       && type == TR::Address
-       && !comp()->compileRelocatableCode())
-      {
-      TR::VMAccessCriticalSection getObjectReferenceLocation(comp());
-      if (*((uintptrj_t*)dataAddress) != 0)
-         {
-         TR_J9VMBase *fej9 = comp()->fej9();
-         TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
-         if (declaringClass && fej9->isClassInitialized(declaringClass))
-            {
-            static const char *foldVarHandle = feGetEnv("TR_FoldVarHandleWithoutFear");
-            int32_t clazzNameLength = 0;
-            char *clazzName = fej9->getClassNameChars(declaringClass, clazzNameLength);
-            bool createKnownObject = false;
-
-            if (J9::TransformUtil::foldFinalFieldsIn(declaringClass, clazzName, clazzNameLength, true, comp()))
-               {
-               createKnownObject = true;
-               }
-            else if (foldVarHandle
-                     && (clazzNameLength != 16 || strncmp(clazzName, "java/lang/System", 16)))
-               {
-               TR_OpaqueClassBlock *varHandleClass =  fej9->getSystemClassFromClassName("java/lang/invoke/VarHandle", 26);
-               TR_OpaqueClassBlock *objectClass = TR::Compiler->cls.objectClass(comp(), *((uintptrj_t*)dataAddress));
-
-               if (varHandleClass != NULL
-                   && objectClass != NULL
-                   && fej9->isInstanceOf(objectClass, varHandleClass, true, true))
-                  {
-                  createKnownObject = true;
-                  }
-               }
-
-            if (createKnownObject)
-               {
-               knownObjectIndex = knot->getIndexAt((uintptrj_t*)dataAddress);
-               }
-            }
-         }
-      }
+   int32_t classNameLen = 0;
+   TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
+   char *className = comp()->fej9()->getClassNameChars(declaringClass, clazzNameLen);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, resolved, cpIndex);
+   
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), cpIndex, unresolvedIndex, knownObjectIndex);
 
    checkUserField(symRef);
@@ -1480,34 +1628,16 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (sharesSymbol)
       symRef->setReallySharesSymbol();
 
-   if (resolved)
-      {
-      sym->setStaticAddress(dataAddress);
-      if (type != TR::Address && _compilation->cg()->getAccessStaticsIndirectly() && !_compilation->compileRelocatableCode())
-         {
-         TR_OpaqueClassBlock * feClass = owningMethod->classOfStatic(cpIndex, true);
-         TR_J9VMBase *fej9 = (TR_J9VMBase *)(fe());
-         symRef->setOffset((char *)dataAddress - (char *)fej9->addressOfFirstClassStatic(feClass));
-         }
-      }
-   else
-      {
-      symRef->setUnresolved();
-      symRef->setCanGCandReturn();
-      symRef->setCanGCandExcept();
-      }
-
-   symRef->setHasBeenAccessedAtRuntime(isUnresolvedInCP? TR_no : TR_maybe);
-
-   if (type == TR::Address)
-      aliasBuilder.addressStaticSymRefs().set(symRef->getReferenceNumber());
-   else if (type == TR::Int32)
-      aliasBuilder.intStaticSymRefs().set(symRef->getReferenceNumber());
-   else
-      aliasBuilder.nonIntPrimitiveStaticSymRefs().set(symRef->getReferenceNumber());
+   initStaticSymbol(owningMethod, NULL, symRef, sym, type, dataAddress, resolved, isUnresolvedInCP, cpIndex);
 
    if (shouldMarkBlockAsCold(owningMethod, isUnresolvedInCP))
       markBlockAsCold();
+
+   if (containingClass != NULL)
+      {
+      ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+      _resolvedFieldStatics.insert(std::make_pair(key, symRef));
+      }
 
    return symRef;
    }

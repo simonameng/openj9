@@ -166,6 +166,8 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
    TR::SymbolReference * findOrCreateMethodHandleSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex);
    TR::SymbolReference * findOrCreateClassStaticsSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex);
    TR::SymbolReference * findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex, bool isStore);
+   TR::SymbolReference * findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, char* name = NULL);
+   TR::SymbolReference * findOrFabricateStaticSymbol(TR_OpaqueClassBlock *containingClass, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature);
 
    TR::SymbolReference * findOrCreateClassIsArraySymbolRef();
 
@@ -262,6 +264,10 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
    TR::ParameterSymbol * createParameterSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t slot, TR::DataType type, TR::KnownObjectTable::Index knownObjectIndex = TR::KnownObjectTable::UNKNOWN);
 
    void initShadowSymbol(TR_ResolvedMethod *, TR::SymbolReference *, bool, TR::DataType, uint32_t, bool);
+   // TR::SymbolReference *findResolvedFieldStatic(ResolvedFieldStaticKey key, bool isVolatile, bool isPrivate, bool isFinal);
+   // TR::StaticSymbol *createStaticSymbol(TR::DataType type, bool isVolatile, bool isPrivate, bool isFinal, const char *name, TR::Symbol::RecognizedField recognizedField);
+   TR::KnownObjectTable::Index findKnownObjectIndex(int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex);
+   void initStaticSymbol(TR_ResolvedMethod *owningMethod, TR_OpaqueClassBlock *containingClass, TR::SymbolReference *symRef, TR::StaticSymbol * sym, TR::DataType type, void *dataAddress, bool isResolved, bool isUnresolvedInCP, int32_t cpIndex);
 
    List<TR::SymbolReference> *dynamicMethodSymrefsByCallSiteIndex(int32_t index);
    bool isFieldClassObject(TR::SymbolReference *symRef);
@@ -307,6 +313,49 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
 
    private:
 
+   struct ResolvedFieldStaticKey
+       {
+       ResolvedFieldStaticKey(
+         TR_OpaqueClassBlock *containingClass,
+         void *dataAddress,
+         TR::DataType type)
+         : _containingClass(containingClass)
+         , _dataAddress(dataAddress)
+         , _type(type)
+         {}
+
+         TR_OpaqueClassBlock * const _containingClass;
+         void * const _dataAddress;
+         const TR::DataType _type;
+
+        bool operator<(const ResolvedFieldStaticKey &rhs) const
+            {
+            const ResolvedFieldStaticKey &lhs = *this;
+            std::less<void*> ptrLt;
+            if (ptrLt(lhs._containingClass, rhs._containingClass))
+               return true;
+            else if (ptrLt(rhs._containingClass, lhs._containingClass))
+               return false;
+            else if (lhs._dataAddress < rhs._dataAddress)
+               return true;
+            else if (lhs._dataAddress > rhs._dataAddress)
+               return false;
+            else if (lhs._type.getDataType() < rhs._type.getDataType())
+               return true;
+            else if (lhs._type.getDataType() > rhs._type.getDataType())
+               return false;
+            else
+               return false;
+            }
+       };
+
+   typedef std::pair<ResolvedFieldStaticKey, TR::SymbolReference* const> ResolvedFieldStaticsEntry;
+   typedef TR::typed_allocator<ResolvedFieldStaticsEntry, TR::Allocator> ResolvedFieldStaticsAlloc;
+   typedef std::map<ResolvedFieldStaticKey, TR::SymbolReference*, std::less<ResolvedFieldStaticKey>, ResolvedFieldStaticsAlloc> ResolvedFieldStatics;
+
+   TR::SymbolReference * findResolvedFieldStatic(ResolvedFieldStaticKey key, bool, bool, bool);
+   TR::StaticSymbol * createStaticSymbol(TR::DataType type, bool isVolatile, bool isPrivate, bool isFinal, const char *name, TR::Symbol::RecognizedField recognizedField);
+
    TR::SymbolReference * createShadowSymbolWithoutCpIndex(TR::ResolvedMethodSymbol *, bool , TR::DataType, uint32_t, bool);
    TR::SymbolReference * findJavaLangReferenceReferentShadowSymbol(TR_ResolvedMethod * owningMethod, TR::DataType, uint32_t);
 
@@ -324,6 +373,8 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
     *     Represents the set of symbol references to static volatile fields of Java objects.
     */
    TR_Array<TR::SymbolReference *> * _unsafeJavaStaticVolatileSymRefs;
+
+   ResolvedFieldStatics _resolvedFieldStatics;
    };
 
 }
