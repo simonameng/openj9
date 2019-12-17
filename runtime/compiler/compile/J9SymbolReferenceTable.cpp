@@ -1426,7 +1426,7 @@ J9::SymbolReferenceTable::createStaticSymbol(TR::DataType type, bool isVolatile,
 
 
 TR::KnownObjectTable::Index
-J9::SymbolReferenceTable::findKnownObjectIndex(int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex)
+J9::SymbolReferenceTable::findKnownObjectIndex(TR_ResolvedMethod *owningMethod, int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex)
    {
    TR::KnownObjectTable *knot = comp()->getOrCreateKnownObjectTable();
    if (knot
@@ -1516,8 +1516,8 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *
 
    int32_t classNameLen = 0;
    TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
-   char *className = comp()->fej9()->getClassNameChars(declaringClass, clazzNameLen);
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, true, -1);
+   char *className = comp()->fej9()->getClassNameChars(declaringClass, classNameLen);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, true, -1);
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1, 0, knownObjectIndex);
    initStaticSymbol(owningMethod, NULL, symRef, sym, type, dataAddress, true, false, -1);
    return symRef;
@@ -1525,8 +1525,10 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *
 
 
 TR::SymbolReference *
-J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR_OpaqueClassBlock *containingClass, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature)
+J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature)
    {
+   TR_ResolvedMethod * owningMethod = owningMethodSymbol->getResolvedMethod();
+   TR_OpaqueClassBlock * containingClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
    ResolvedFieldStaticKey key(containingClass, dataAddress, type);
    TR::SymbolReference *symRef = findResolvedFieldStatic(key, isVolatile, isPrivate, isFinal);
    if (symRef)
@@ -1546,7 +1548,7 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR_OpaqueClassBlock *conta
          signature);
    TR::StaticSymbol *sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, qualifiedFieldName, recognizedField);
 
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, true, -1);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, true, -1);
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, mcount_t::valueOf(0), -1, 0, knownObjectIndex);
    initStaticSymbol(NULL, containingClass, symRef, sym, type, dataAddress, true, false, -1);
    _resolvedFieldStatics.insert(std::make_pair(key, symRef));
@@ -1572,8 +1574,7 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (resolved)
       {
       bool isStatic = false;
-      containingClass =
-         owningMethod->definingClassFromCPFieldRef(comp(), cpIndex, isStatic);
+      containingClass = static_cast<TR_ResolvedJ9Method*>(owningMethod)->definingClassFromCPFieldRef(comp(), cpIndex, isStatic);
 
       TR_ASSERT_FATAL(
          containingClass != NULL,
@@ -1618,8 +1619,8 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
 
    int32_t classNameLen = 0;
    TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
-   char *className = comp()->fej9()->getClassNameChars(declaringClass, clazzNameLen);
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(classNameLen, className, type, dataAddress, isFinal, resolved, cpIndex);
+   char *className = comp()->fej9()->getClassNameChars(declaringClass, classNameLen);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, resolved, cpIndex);
    
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), cpIndex, unresolvedIndex, knownObjectIndex);
 

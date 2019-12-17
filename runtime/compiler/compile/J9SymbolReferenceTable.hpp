@@ -167,7 +167,7 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
    TR::SymbolReference * findOrCreateClassStaticsSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex);
    TR::SymbolReference * findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex, bool isStore);
    TR::SymbolReference * findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, char* name = NULL);
-   TR::SymbolReference * findOrFabricateStaticSymbol(TR_OpaqueClassBlock *containingClass, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature);
+   TR::SymbolReference * findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature);
 
    TR::SymbolReference * findOrCreateClassIsArraySymbolRef();
 
@@ -266,7 +266,7 @@ class SymbolReferenceTable : public OMR::SymbolReferenceTableConnector
    void initShadowSymbol(TR_ResolvedMethod *, TR::SymbolReference *, bool, TR::DataType, uint32_t, bool);
    // TR::SymbolReference *findResolvedFieldStatic(ResolvedFieldStaticKey key, bool isVolatile, bool isPrivate, bool isFinal);
    // TR::StaticSymbol *createStaticSymbol(TR::DataType type, bool isVolatile, bool isPrivate, bool isFinal, const char *name, TR::Symbol::RecognizedField recognizedField);
-   TR::KnownObjectTable::Index findKnownObjectIndex(int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex);
+   TR::KnownObjectTable::Index findKnownObjectIndex(TR_ResolvedMethod *owningMethod, int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex);
    void initStaticSymbol(TR_ResolvedMethod *owningMethod, TR_OpaqueClassBlock *containingClass, TR::SymbolReference *symRef, TR::StaticSymbol * sym, TR::DataType type, void *dataAddress, bool isResolved, bool isUnresolvedInCP, int32_t cpIndex);
 
    List<TR::SymbolReference> *dynamicMethodSymrefsByCallSiteIndex(int32_t index);
