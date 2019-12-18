@@ -1426,7 +1426,7 @@ J9::SymbolReferenceTable::createStaticSymbol(TR::DataType type, bool isVolatile,
 
 
 TR::KnownObjectTable::Index
-J9::SymbolReferenceTable::findKnownObjectIndex(TR_ResolvedMethod *owningMethod, int32_t classNameLen, const char *className, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex)
+J9::SymbolReferenceTable::findKnownObjectIndex(TR_ResolvedMethod *owningMethod, TR_OpaqueClassBlock *declaringClass, TR::DataType type, void *dataAddress, bool isFinal, bool isResolved, int32_t cpIndex)
    {
    TR::KnownObjectTable *knot = comp()->getOrCreateKnownObjectTable();
    if (knot
@@ -1439,10 +1439,11 @@ J9::SymbolReferenceTable::findKnownObjectIndex(TR_ResolvedMethod *owningMethod, 
       if (*((uintptrj_t*)dataAddress) != 0)
          {
          TR_J9VMBase *fej9 = comp()->fej9();
-         TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
          if (declaringClass && fej9->isClassInitialized(declaringClass))
             {
             static const char *foldVarHandle = feGetEnv("TR_FoldVarHandleWithoutFear");
+            int32_t classNameLen = 0;
+            char *className = fej9->getClassNameChars(declaringClass, classNameLen);
             bool createKnownObject = false;
 
             if (J9::TransformUtil::foldFinalFieldsIn(declaringClass, className, classNameLen, true, comp()))
@@ -1514,10 +1515,8 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *
    else
       sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, name, recognizedField);
 
-   int32_t classNameLen = 0;
    TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
-   char *className = comp()->fej9()->getClassNameChars(declaringClass, classNameLen);
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, true, -1);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, declaringClass, type, dataAddress, isFinal, true, -1);
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), -1, 0, knownObjectIndex);
    initStaticSymbol(owningMethod, NULL, symRef, sym, type, dataAddress, true, false, -1);
    return symRef;
@@ -1528,14 +1527,14 @@ TR::SymbolReference *
 J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *owningMethodSymbol, TR::Symbol::RecognizedField recognizedField, TR::DataType type, void *dataAddress, bool isVolatile, bool isPrivate, bool isFinal, const char *name, const char *signature)
    {
    TR_ResolvedMethod * owningMethod = owningMethodSymbol->getResolvedMethod();
-   TR_OpaqueClassBlock * containingClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
-   ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+   TR_OpaqueClassBlock * declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), -1);
+   ResolvedFieldStaticKey key(declaringClass, dataAddress, type);
    TR::SymbolReference *symRef = findResolvedFieldStatic(key, isVolatile, isPrivate, isFinal);
    if (symRef)
       return symRef;
 
    int32_t classNameLen = 0;
-   const char *className = TR::Compiler->cls.classNameChars(comp(), containingClass, classNameLen);
+   const char *className = (declaringClass && comp()->fej9()->isClassInitialized(declaringClass)) ? (TR::Compiler->cls.classNameChars(comp(), declaringClass, classNameLen)) : NULL;
    int qualifiedFieldNameSize = classNameLen + 1 + strlen(name) + 1 + strlen(signature) + 1;
    char *qualifiedFieldName = (char*)trHeapMemory().allocate(qualifiedFieldNameSize);
    snprintf(
@@ -1548,9 +1547,9 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *
          signature);
    TR::StaticSymbol *sym = createStaticSymbol(type, isVolatile, isPrivate, isFinal, qualifiedFieldName, recognizedField);
 
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, true, -1);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, declaringClass, type, dataAddress, isFinal, true, -1);
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, mcount_t::valueOf(0), -1, 0, knownObjectIndex);
-   initStaticSymbol(NULL, containingClass, symRef, sym, type, dataAddress, true, false, -1);
+   initStaticSymbol(NULL, declaringClass, symRef, sym, type, dataAddress, true, false, -1);
    _resolvedFieldStatics.insert(std::make_pair(key, symRef));
    return symRef;
    }
@@ -1559,7 +1558,7 @@ J9::SymbolReferenceTable::findOrFabricateStaticSymbol(TR::ResolvedMethodSymbol *
 TR::SymbolReference *
 J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * owningMethodSymbol, int32_t cpIndex, bool isStore)
    {
-   TR_ResolvedMethod * owningMethod = static_cast<TR_ResolvedJ9Method*>(owningMethodSymbol->getResolvedMethod());
+   TR_ResolvedMethod * owningMethod = owningMethodSymbol->getResolvedMethod();
    void * dataAddress;
    TR::DataType type = TR::NoType;
    bool isVolatile, isFinal, isPrivate, isUnresolvedInCP;
@@ -1570,19 +1569,19 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
 
    bool sharesSymbol = false;
 
-   TR_OpaqueClassBlock *containingClass = NULL;
+   TR_OpaqueClassBlock *declaringClass = NULL;
    if (resolved)
       {
       bool isStatic = false;
-      containingClass = static_cast<TR_ResolvedJ9Method*>(owningMethod)->definingClassFromCPFieldRef(comp(), cpIndex, isStatic);
+      declaringClass = static_cast<TR_ResolvedJ9Method*>(owningMethod)->definingClassFromCPFieldRef(comp(), cpIndex, isStatic);
 
       TR_ASSERT_FATAL(
-         containingClass != NULL,
+         declaringClass != NULL,
          "failed to get defining class of field ref cpIndex=%d in owning method J9Method=%p",
          cpIndex,
          owningMethod->getNonPersistentIdentifier());
 
-      ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+      ResolvedFieldStaticKey key(declaringClass, dataAddress, type);
       TR::SymbolReference *symRef = findResolvedFieldStatic(key, isVolatile, isPrivate, isFinal);
 
       if (symRef != NULL)
@@ -1617,10 +1616,7 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (sharesSymbol)
       symRef->setReallySharesSymbol();
 
-   int32_t classNameLen = 0;
-   TR_OpaqueClassBlock *declaringClass = owningMethod->getDeclaringClassFromFieldOrStatic(comp(), cpIndex);
-   char *className = comp()->fej9()->getClassNameChars(declaringClass, classNameLen);
-   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, classNameLen, className, type, dataAddress, isFinal, resolved, cpIndex);
+   TR::KnownObjectTable::Index knownObjectIndex = findKnownObjectIndex(owningMethod, declaringClass, type, dataAddress, isFinal, resolved, cpIndex);
    
    symRef = new (trHeapMemory()) TR::SymbolReference(self(), sym, owningMethodSymbol->getResolvedMethodIndex(), cpIndex, unresolvedIndex, knownObjectIndex);
 
@@ -1634,9 +1630,9 @@ J9::SymbolReferenceTable::findOrCreateStaticSymbol(TR::ResolvedMethodSymbol * ow
    if (shouldMarkBlockAsCold(owningMethod, isUnresolvedInCP))
       markBlockAsCold();
 
-   if (containingClass != NULL)
+   if (declaringClass != NULL)
       {
-      ResolvedFieldStaticKey key(containingClass, dataAddress, type);
+      ResolvedFieldStaticKey key(declaringClass, dataAddress, type);
       _resolvedFieldStatics.insert(std::make_pair(key, symRef));
       }
 
