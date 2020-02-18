@@ -117,6 +117,82 @@ void J9::RecognizedCallTransformer::process_java_lang_StrictMath_and_Math_sqrt(T
 
    TR::TransformUtil::removeTree(comp(), treetop);
    }
+
+void J9::RecognizedCallTransformer::process_sun_misc_Unsafe_copyMemory(TR::TreeTop* treetop, TR::Node* node)
+   {
+   TR::Node *ttNode = treetop->getNode();
+   if (comp()->canTransformUnsafeCopyToArrayCopy()
+         && node->getOpCode().isCall()
+         && node->getSymbol()->isMethod())
+      {
+
+      if ((ttNode->getOpCodeValue() == TR::treetop || ttNode->getOpCode().isResolveOrNullCheck())
+            && performTransformation(comp(), "%sChanging call Unsafe.copyMemory [%p] to arraycopy\n", OPT_DETAILS, node))
+
+         {
+         TR::Node *unsafe     = node->getChild(0);
+         TR::Node *src        = node->getChild(1);
+         TR::Node *srcOffset  = node->getChild(2);
+         TR::Node *dest       = node->getChild(3);
+         TR::Node *destOffset = node->getChild(4);
+         TR::Node *len        = node->getChild(5);
+
+         int64_t srcOffLow;
+         int64_t srcOffHigh;
+         int64_t dstOffLow;
+         int64_t dstOffHigh;
+         int64_t copyLenLow;
+         int64_t copyLenHigh;
+
+         bool isGlobal;
+         TR::VPConstraint *srcOffsetConstraint = getConstraint(srcOffset, isGlobal);
+         TR::VPConstraint *dstOffsetConstraint = getConstraint(destOffset, isGlobal);
+         TR::VPConstraint *copyLenConstraint   = getConstraint(len, isGlobal);
+
+         srcOffLow   = srcOffsetConstraint ? srcOffsetConstraint->getLowInt() : TR::getMinSigned<TR::Int32>();
+         srcOffHigh  = srcOffsetConstraint ? srcOffsetConstraint->getHighInt() : TR::getMaxSigned<TR::Int32>();
+         dstOffLow   = dstOffsetConstraint ? dstOffsetConstraint->getLowInt() : TR::getMinSigned<TR::Int32>();
+         dstOffHigh  = dstOffsetConstraint ? dstOffsetConstraint->getHighInt() : TR::getMaxSigned<TR::Int32>();
+         copyLenLow  = copyLenConstraint   ? copyLenConstraint->getLowInt() : TR::getMinSigned<TR::Int32>();
+         copyLenHigh = copyLenConstraint   ? copyLenConstraint->getHighInt() : TR::getMaxSigned<TR::Int32>();
+
+         if (comp()->target().is64Bit())
+            {
+            src  = TR::Node::create(TR::aladd, 2, src, srcOffset);
+            dest = TR::Node::create(TR::aladd, 2, dest, destOffset);
+            }
+         else
+            {
+            srcOffset  = TR::Node::create(TR::l2i, 1, srcOffset);
+            destOffset = TR::Node::create(TR::l2i, 1, destOffset);
+            len        = TR::Node::create(TR::l2i, 1, len);
+            src  = TR::Node::create(TR::aiadd, 2, src, srcOffset);
+            dest = TR::Node::create(TR::aiadd, 2, dest, destOffset);
+            }
+
+         TR::Node    *oldArraycopyNode = node;
+         TR::TreeTop *oldTT = treetop;
+
+         node = TR::Node::createArraycopy(src, dest, len);
+         TR::Node    *treeTopNode = TR::Node::create(TR::treetop, 1, node);
+         treetop = TR::TreeTop::create(comp(), treeTopNode);
+
+         oldTT->insertAfter(treetop);
+
+         if (ttNode->getOpCode().isNullCheck())
+            ttNode->setAndIncChild(0, TR::Node::create(TR::PassThrough, 1, unsafe));
+         else
+            ttNode->setAndIncChild(0, unsafe);
+
+         removeNode(oldArraycopyNode);
+
+         if ((srcOffLow >= dstOffHigh) || (srcOffHigh+copyLenHigh) <= dstOffLow)
+            node->setForwardArrayCopy(true);
+
+         return;
+         }
+      }
+   }
 /*
 Transform an Unsafe atomic call to diamonds with equivalent semantics
 
@@ -386,7 +462,9 @@ bool J9::RecognizedCallTransformer::isInlineable(TR::TreeTop* treetop)
          return !comp()->compileRelocatableCode();
       case TR::java_lang_StrictMath_sqrt:
       case TR::java_lang_Math_sqrt:
-         return comp()->target().cpu.getSupportsHardwareSQRT();;
+         return comp()->target().cpu.getSupportsHardwareSQRT();
+      case TR::sun_misc_Unsafe_copyMemory:
+         return comp()->target().cpu.isX86() || comp()->target().cpu.isZ() || comp()->target().cpu.isPower();
       default:
          return false;
       }
@@ -466,6 +544,9 @@ void J9::RecognizedCallTransformer::transform(TR::TreeTop* treetop)
       case TR::java_lang_StrictMath_sqrt:
       case TR::java_lang_Math_sqrt:
          process_java_lang_StrictMath_and_Math_sqrt(treetop, node);
+         break;
+      case TR::sun_misc_Unsafe_copyMemory:
+         process_sun_misc_Unsafe_copyMemory(treetop,node);
          break;
       default:
          break;
