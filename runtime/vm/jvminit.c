@@ -2843,6 +2843,15 @@ modifyDllLoadTable(J9JavaVM * vm, J9Pool* loadTable, J9VMInitArgs* j9vm_args)
 					return JNI_ERR;
 				}
 			}
+
+			UDATA handle = 0;
+			J9InternalVMFunctions *vmFuncs = vm->internalVMFunctions;
+			jint result = (jint)vmFuncs->registerBootstrapLibrary(vm->mainThread, "zip", (J9NativeLibrary **)&handle, FALSE);
+			if (0 == result) {
+				fprintf(stderr,"HI!!! Failed to load: %s\n", J9_ZIP_DLL_NAME);
+				exit( -1 );	/* failed */
+			}
+
 			j9str_printf(PORTLIB, dllCheckPathPtr, expectedPathLength, "%s%s%s",
 					jitdirectoryValue, DIR_SEPARATOR_STR, entry->dllName);
 			jitFileHandle = j9sl_open_shared_library(dllCheckPathPtr, &(entry->descriptor), openFlags);
